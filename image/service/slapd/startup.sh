@@ -337,48 +337,31 @@ EOF
     # Replication config
     #
 
-    function disableReplication() {
-      sed -i "s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-disable.ldif
-      ldapmodify -c -Y EXTERNAL -Q -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-disable.ldif 2>&1 | log-helper debug || true
-      [[ -f "$WAS_STARTED_WITH_REPLICATION" ]] && rm -f "$WAS_STARTED_WITH_REPLICATION"
-    }
-
-    if [ "${LDAP_REPLICATION,,}" == "true" ]; then
-
-      log-helper info "Add replication config..."
-      disableReplication || true
-
-      i=1
-      for host in $(complex-bash-env iterate LDAP_REPLICATION_HOSTS)
-      do
-        sed -i "s|{{ LDAP_REPLICATION_HOSTS }}|olcServerID: $i ${!host}\n{{ LDAP_REPLICATION_HOSTS }}|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
-        sed -i "s|{{ LDAP_REPLICATION_HOSTS_CONFIG_SYNC_REPL }}|olcSyncRepl: rid=00$i provider=${!host} ${LDAP_REPLICATION_CONFIG_SYNCPROV}\n{{ LDAP_REPLICATION_HOSTS_CONFIG_SYNC_REPL }}|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
-        sed -i "s|{{ LDAP_REPLICATION_HOSTS_DB_SYNC_REPL }}|olcSyncRepl: rid=10$i provider=${!host} ${LDAP_REPLICATION_DB_SYNCPROV}\n{{ LDAP_REPLICATION_HOSTS_DB_SYNC_REPL }}|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
-
-        ((i++))
-      done
-
+    if [ "${LDAP_REPLICATION,,}" == "true" -a ${LDAP_REPLICATION_ROLE} == "slave" ]; then
       get_ldap_base_dn
-      sed -i "s|\$LDAP_BASE_DN|$LDAP_BASE_DN|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
-      sed -i "s|\$LDAP_ADMIN_PASSWORD|$LDAP_ADMIN_PASSWORD|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
-      sed -i "s|\$LDAP_CONFIG_PASSWORD|$LDAP_CONFIG_PASSWORD|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
 
-      sed -i "/{{ LDAP_REPLICATION_HOSTS }}/d" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
-      sed -i "/{{ LDAP_REPLICATION_HOSTS_CONFIG_SYNC_REPL }}/d" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
-      sed -i "/{{ LDAP_REPLICATION_HOSTS_DB_SYNC_REPL }}/d" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
+      log-helper info "Add replication config as slave..."
+      log-helper info $LDAP_MASTER_ADDRESS
 
-      sed -i "s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif
+      sed -i "s|{{LDAP_REPLICATION_ID}}|$LDAP_REPLICATION_ID|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/slave.ldif
+      sed -i "s|{{LDAP_REPLICATION_MASTER_ADDRESS}}|$LDAP_REPLICATION_MASTER_ADDRESS|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/slave.ldif
+      sed -i "s|{{LDAP_BASE_DN}}|$LDAP_BASE_DN|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/slave.ldif
+      sed -i "s|{{LDAP_ADMIN_PASSWORD}}|$LDAP_ADMIN_PASSWORD|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/slave.ldif
 
-      ldapmodify -c -Y EXTERNAL -Q -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-enable.ldif 2>&1 | log-helper debug || true
+      ldapadd -Y EXTERNAL -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/slave.ldif 2>&1 | log-helper debug || true
 
       [[ -f "$WAS_STARTED_WITH_REPLICATION" ]] && rm -f "$WAS_STARTED_WITH_REPLICATION"
       echo "export PREVIOUS_HOSTNAME=${HOSTNAME}" > $WAS_STARTED_WITH_REPLICATION
 
+    elif [ "${LDAP_REPLICATION,,}" == "true" ];then
+
+      log-helper info "Add replication config as master..."
+      ldapadd -Y EXTERNAL -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/master.ldif 2>&1 | log-helper debug || true
+      [[ -f "$WAS_STARTED_WITH_REPLICATION" ]] && rm -f "$WAS_STARTED_WITH_REPLICATION"
+      echo "export PREVIOUS_HOSTNAME=${HOSTNAME}" > $WAS_STARTED_WITH_REPLICATION
+
     else
-
       log-helper info "Disable replication config..."
-      disableReplication || true
-
     fi
 
     #
@@ -411,7 +394,7 @@ EOF
   #
   if [ "${LDAP_REMOVE_CONFIG_AFTER_SETUP,,}" == "true" ]; then
     log-helper info "Remove config files..."
-    rm -rf ${CONTAINER_SERVICE_DIR}/slapd/assets/config
+    # rm -rf ${CONTAINER_SERVICE_DIR}/slapd/assets/config
   fi
 
   #
