@@ -27,8 +27,11 @@ RUN echo "path-include /usr/share/doc/krb5*" >> /etc/dpkg/dpkg.cfg.d/docker && a
        openssl \
        slapd \
        krb5-kdc-ldap \
+       python-pip \
+       python-setuptools \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
+    && pip install awscli
 
 # Add service directory to /container/service
 ADD service /container/service
